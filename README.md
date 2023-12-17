@@ -2,6 +2,8 @@
 
 A (not so) simple online Forth runner.
 
+![RunForth: A Simple Online Forth Runner](/docs/runforth.png)
+
 ## Introduction
 
 RunForth provides a way to edit Forth code and execute it directly in the browser.
