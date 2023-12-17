@@ -37,7 +37,7 @@ Clicking the `Workspace` selector switches to an empty workspace to try out thin
 ### Verbose option
 
 By default, RunForth executes Forth in "Verbose" mode. In this mode it echoes each 
-line of code that is run, shown in <span style="display: inline-block; color:gold; background: black;">GOLD</span>. 
+line of code that is run, shown in $${\color{gold}GOLD}$$
 The output (if any) from the interpreted line shows in <span style="display: inline-block; color:lightgreen; background: black;">LIGHT GREEN</span>.
 
 Forth prompts are shown in <span style="display: inline-block; color:white; background: black;">white</span>, 
