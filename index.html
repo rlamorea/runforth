@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+dump<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>RunForth: A Simple Forth Runner</title>
+
+  <style type="text/css" media="screen">
+      body { background: black; color: lightgreen; }
+      h1 { font-family: monospace; margin: 2px; font-size: 12pt; position: relative; height: 20px; }
+      .controls {
+        display: inline-block;
+        position: absolute;
+        top: 0;
+        right: 0;
+        text-align: right;
+      }
+      .controls button {
+        border: solid 2px green;
+        border-radius: 4px;
+        background: darkgreen;
+        color: lightgreen;
+        font-family: monospace; font-size: 12pt;
+        padding: 0 15px;
+      }
+      .controls button:hover {
+        border-color: lightgreen;
+      }
+      .controls button:focus {
+        color: darkgreen;
+        background: lightgreen;
+      }
+      #editor {
+          display: inline-block;
+          width: 50vw;
+          height: calc(95vh - 20px);
+      }
+      #output {
+        display: inline-block;
+        width: 48vw;
+        height: calc(95vh - 24px);
+        font-family: monospace; font-size: 10pt; padding: 2px; color: gold;
+        margin: 0;
+        vertical-align: top;
+        overflow: auto;
+      }
+      #output.waiting { background: #381111; }
+      #output div { display: block; margin: 0; padding: 0; }
+      #output .codeline { color: gold; }
+      #output .forthout { color: lightgreen; }
+      #output .prompt { color: white; font-style: italic; }
+      #output .error { color: red; font-weight: bold; }
+      #output .debug { color: yellow; }
+      #output .debugline { color: darkgoldenrod; font-size: 8pt; font-style: italic; }
+      #output .debugstack { color: yellow; font-size: 8pt; }
+      #forthEmit { display: none; }
+  </style>
+</head>
+<body>
+  <h1>RunForth: A Simple Forth Runner
+    <div class="controls">
+      <input type="radio" id="view-code" name="codeview"></input><label for="view-code">CODE</label>
+      <input type="radio" id="view-work" name="codeview"></input><label for="view-work">WORKSPACE</label>
+      &nbsp;&nbsp;
+      <input type="checkbox" id="debug"></input><label for="debug">DEBUG</label>
+      &nbsp;&nbsp;
+      <input type="checkbox" id="keepstack"></input><label for="keepstack">KEEP STACK</label>
+      &nbsp;&nbsp;
+      <input type="checkbox" id="verbose"></input><label for="verbose">VERBOSE</label>
+      &nbsp;&nbsp;
+      <button id="run">RUN</button>
+    </div>
+  </h1>
+  <div id="editor"></div>
+  <div id="output"></div>
+  <pre id="forthEmit"></pre>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.0/ace.js" type="text/javascript" charset="utf-8"></script>
+  <script type="module">
+      const FORTH_PROMPTS = [ /ok\n$/, /compiled\n$/ ];
+      // pulled from https://github.com/remko/waforth/blob/master/src/waforth.wat
+      const FORTH_ERRORS = [
+        /undefined word.*\n$/,
+        /division by 0\n$/,
+        /incomplete output.*\n$/,
+        /word not supported in interpret mode\n$/,
+        /not implemented.*\n$/,
+        /stack empty\n$/,
+        /error\n$/
+      ];
+
+      const DUMPSTACK = ': -rf-dumpstack ." -rf-stk" . ." STACK ( " DEPTH . ." ) " .S CR ;';
+      const DEBUGSTACK = '-rf-dumpstack';
+      const CLEARSTACK = 'ABORT';
+      const RFKEY = `
+        : -rf-key-cb DROP ;
+        : RFKEY ['] -rf-key-cb S" rfkey" SCALL ;
+        `;
+
+      // upcase everything except content between parentheses or quotes
+      function cleanLineForWaForth(line) {
+        let cleanLine = ''
+        let inQuote = false, inParen = false;
+        for (let idx = 0; idx < line.length; idx++) {
+          let ch = line[idx];
+          if (inParen && ch === ')') {
+            inParen = false
+          } else if (inQuote && ch == '"') {
+            inQuote = false
+          } else if (ch === '(') {
+            inParen = true
+          } else if (ch === '"') {
+            inQuote = true
+          }
+          if (!inParen && !inQuote) {
+            ch = ch.toUpperCase()
+          }
+          cleanLine += ch
+        }
+        return cleanLine
+      }
+
+      function endsWithPattern(string, patterns, patternType) {
+        let match = null;
+        let matchPattern = null;
+        for (const pattern of patterns) {
+          match = pattern.exec(string);
+          if (match && match.index >= 0) {
+            matchPattern = pattern;
+            break;
+          }
+        }
+        if (match) {
+          return { result: string.substring(0, match.index), notice: string.substring(match.index), noticeType: patternType };
+        } else {
+          return null;
+        }
+      }
+
+      function parseForthEmit(forthEmit) {
+        let forthResult = endsWithPattern(forthEmit.innerHTML, FORTH_PROMPTS, 'prompt');
+        if (!forthResult) {
+          forthResult = endsWithPattern(forthEmit.innerHTML, FORTH_ERRORS, 'error');
+        }
+        if (!forthResult) {
+          forthResult = { result: forthEmit.innerHTML, notice: null }
+        }
+        return forthResult;
+      }
+
+      function addOutputLine(output, message, type) {
+        const out = document.createElement('div');
+        out.classList = [ type ];
+        out.appendChild(document.createTextNode(message));
+        output.appendChild(out);
+        out.scrollIntoView();
+      }
+
+      function saveCode(editor) {
+        window.localStorage.setItem('rf-code', editor.getValue());
+      }
+
+      function restoreCode(editor) {
+        const savedCode = window.localStorage.getItem('rf-code');
+        if (savedCode && savedCode.trim() !== '') {
+          editor.setValue(savedCode);
+        } else {
+          editor.setValue('');
+        }
+      }
+
+      import WAForth from "https://cdn.skypack.dev/waforth@0.16.1";
+
+        (async () => {
+          const editorEl = document.getElementById('editor');
+          let editor = ace.edit("editor");
+          editor.setTheme("ace/theme/monokai");
+          editor.session.setMode("ace/mode/forth");
+          // check for saved content
+          restoreCode(editor);
+          let viewingCode = true;
+          editor.on('change', (e) => {
+            saveCode(editor); });
+
+          let output = document.getElementById('output');
+          let forthEmit = document.getElementById('forthEmit');
+
+          const forth = new WAForth();
+          forth.onEmit = (c) => forthEmit.appendChild(document.createTextNode(c));
+          await forth.load();
+
+          let keyBuffer = [];
+          let lastKey = 0;
+          window.addEventListener('keydown', (e) => {
+            keyBuffer.push(e.which);
+            lastKey = e.which;
+          });
+          // take from https://stackoverflow.com/questions/44746592/is-there-a-way-to-write-async-await-code-that-responds-to-onkeypress-events
+          function readKey() {
+              return new Promise(resolve => {
+                  window.addEventListener('keydown', resolve, {once:true});
+              });
+          }
+
+          let waitingForInput = false;
+          let addedRfKey = false;
+          function disableWait() {
+            dumpForthEmit();
+            waitingForInput = false;
+          }
+          // override WAForth key handling
+          forth.bindAsync('rfkey', async () => {
+            output.classList.add('waiting');
+            waitingForInput = true;
+            const k = await readKey();
+            output.classList.remove('waiting');
+            forth.push(k.which);
+            setTimeout(disableWait, 100);
+          });
+
+          let codeLines = [];
+          let showDebug = false;
+          function dumpForthEmit(contents) {
+            let contentsError = null;
+            if (!contents) {
+              contents = parseForthEmit(forthEmit);
+              if (contents.noticeType === 'error') { contentsError = contents.notice; }
+              contents = contents.result.replaceAll('ok', ''); // just do this because of some strangeness
+            }
+            forthEmit.innerHTML = '';
+            const outLines = (contents + " ").split('\n');
+            for (let idx = 0; idx < outLines.length; idx++) {
+              let outLine = outLines[idx];
+              let subLines = [ outLine ];
+              const stackDumpIdx = outLine.indexOf('-rf-stk');
+              if (stackDumpIdx > 0) {
+                subLines = [ outLine.substring(0, stackDumpIdx), outLine.substring(stackDumpIdx) ];
+              }
+              for (let subLine of subLines) {
+                let outLineClass = 'forthout';
+                if (subLine.startsWith('-rf-stk')) {
+                  if (!showDebug) continue; // skip this line
+                  subLine = subLine.substring(7);
+                  const stackKeyLine = parseInt(subLine);
+                  subLine = subLine.substring(stackKeyLine.toString().length + 1)
+
+                  addOutputLine(output, `${stackKeyLine + 1}: ${codeLines[stackKeyLine]}`, 'debugline');
+                  outLineClass = 'debugstack';
+                }
+                if (subLine.trim() === '') {
+                  subLine = '\u00A0'; // force something to introduce a blank line
+                }
+
+                addOutputLine(output, subLine, outLineClass);
+              }
+            }
+            if (contentsError) {
+              addOutputLine(output, contentsError, 'error');
+            }
+          }
+
+          const verboseCheck = document.getElementById('verbose');
+          verboseCheck.checked = true;
+          const debugCheck = document.getElementById('debug');
+          debugCheck.checked = false;
+          let addedDebug = false;
+          const keepStackCheck = document.getElementById('keepstack');
+          keepStackCheck.checked = false;
+
+          const viewCode = document.getElementById('view-code');
+          const viewWork = document.getElementById('view-work');
+          viewCode.checked = true;
+          viewCode.addEventListener('click', (e) => { restoreCode(editor); });
+          viewWork.addEventListener('click', (e) => {
+            saveCode(editor);
+            editor.setValue('');
+          });
+
+          let runButton = document.getElementById('run');
+          runButton.addEventListener('click', (e) => {
+            // try to uppercase all keywords found in the editor
+            //cleanAceValue(editorEl, editor);
+
+            const verbose = verboseCheck.checked;
+            const debug = debugCheck.checked;
+
+            output.innerHTML = '';
+
+            if (!keepStackCheck.checked) {
+              forth.interpret(CLEARSTACK); // just clear the stack before running
+              addedDebug = false; // need to put this back later
+              addedRfKey = false;
+            }
+
+            if (debug && !addedDebug) {
+              forth.interpret(DUMPSTACK); // put dumpstack word into dictionary
+              addedDebug = true;
+            }
+
+            if (!addedRfKey) {
+              forth.interpret(RFKEY);
+              //window.alert(forthEmit.innerHTML);
+              addedRfKey = true;
+            }
+
+            showDebug = debug;
+
+            let codeLineIdx = 0;
+            codeLines = (editor.getValue() || '').split('\n');
+
+            function processCodeLine() {
+              if (codeLineIdx >= codeLines.length) {
+                runButton.blur();
+                return;
+              }
+              if (waitingForInput) {
+                setTimeout(processCodeLine, 20);
+                return;
+              }
+              const codeLine = codeLines[codeLineIdx];
+
+              if (codeLine.trim() == '') { codeLineIdx += 1; processCodeLine(); return; }
+              if (codeLine.trim().toLowerCase().startsWith('-rf-')) { // directive, will skip
+                let lineIdxIncrement = 1;
+                let directive = codeLine.trim().toLowerCase().substring(4);
+                if (directive.startsWith('debug')) {
+                  directive = directive.substring(6).trim();
+                  if (debug) {
+                    if (directive === 'on') { showDebug = true; }
+                    else if (directive === 'off') { showDebug = false; }
+                    else { showDebug = !showDebug; }
+
+                    addOutputLine(output, `DEBUG OUTPUT ${showDebug ? 'ON' : 'OFF'}`, 'debug');
+                  }
+                } else if (directive.startsWith('goto')) {
+                  lineIdxIncrement = 0;
+                  directive = directive.substring(4).trim();
+                  const isIf = directive.startsWith('-if');
+                  if (isIf) { directive = directive.substring(3).trim(); }
+                  try {
+                    let newCodeLineIdx = parseInt(directive) - 1;
+                    if (newCodeLineIdx < 0 || newCodeLineIdx >= codeLines.length) { throw('invalid line'); }
+                    if (isIf) {
+                      directive = directive.substring(newCodeLineIdx.toString().length).trim();
+                      const ifValue = directive.length > 0 ? parseInt(directive) : null;
+                      const stackValue = forth.pop();
+                      if ((ifValue === null && !stackValue) || (ifValue !== null && stackValue !== ifValue)) {
+                        newCodeLineIdx = codeLineIdx; // skip directive
+                        lineIdxIncrement = 1;
+                      }
+                    }
+                    if (debug && newCodeLineIdx !== codeLineIdx) {
+                      addOutputLine(output, `GOTO LINE ${newCodeLineIdx + 1}`, 'debug');
+                    }
+                    codeLineIdx = newCodeLineIdx;
+                  } catch (e) {
+                    addOutputLine(output, `INVALID GOTO DIRECTIVE ${codeLine}: ${e}`, 'error');
+                  }
+                }
+                codeLineIdx += lineIdxIncrement; // make sure to increment the index
+                processCodeLine(); // ignore all directives
+                return;
+              }
+
+              forthEmit.innerHTML = '';
+              let cleanLine = cleanLineForWaForth(codeLine);
+              forth.interpret(cleanLine);
+
+              let forthResult = parseForthEmit(forthEmit);
+
+              let lineVerbose = (verbose || forthResult.noticeType === 'error')
+
+              if (lineVerbose) {
+                addOutputLine(output, `${codeLineIdx + 1}: ${cleanLine}`, 'codeline');
+              }
+
+              if (forthResult.result.trim() !== '') {
+                dumpForthEmit(forthResult.result + " ");
+              }
+
+              if (forthResult.notice && lineVerbose) {
+                addOutputLine(output, forthResult.notice, forthResult.noticeType);
+              }
+
+              if (debug) {
+                forthEmit.innerHTML = '';
+                const debugForth = `${codeLineIdx} ${DEBUGSTACK}`;
+                forth.interpret(debugForth);
+                if (showDebug) {
+                  addOutputLine(output, forthEmit.innerHTML.slice(codeLineIdx.toString().length + 7, -3), 'debug');
+                }
+              }
+
+              codeLineIdx += 1;
+              processCodeLine();
+              return;
+            }
+
+            processCodeLine();
+          })
+      })();
+  </script>
+</body>
+</html>
