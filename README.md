@@ -53,25 +53,18 @@ If the `Keep Stack` option is on, this will not happen and words will be remembe
 
 ### Debugging
 
-If the `Debug` option is on, RunForth will include debugging output. For most lines this will simply show the state of the Stack:
+If the `Debug` option is on, RunForth will include debugging output. For most lines this will simply show the state of the Stack in
+![YELLOW](https://placehold.co/15x15/yellow/yellow.png) YELLOW.
 
-<div style="margin: 5en 0; background:black; color: yellow">STACK ( <i>N</i> ) <i>n1</i> <i>n2</i> ... <i>nN</i> </div>
+```
+STACK ( N ) n1 n2 ... nN
+```
 
 Where `N` is the size of the Stack and `n1, n2 ... nN` is the contents of the Stack, with "top of stack" to the right.
 
 When running a word you have defined in your code, you can also see the debugging of the lines _inside_ that word when it is executed. In this case the associated code line is also displayed, like:
 
-<div style="margin: 5en 0; background:black; color: yellow">
-two-plus-two .<br/>
-<span style="color: darkgoldenrod; font-style: italic; font-size: 8pt;">5: : two-plus-two</span><br/>
-<span style="color: yellow; font-size: 8pt;">STACK ( 0 )</span><br/>
-<span style="color: darkgoldenrod; font-style: italic; font-size: 8pt;">5: 2 dup</span><br/>
-<span style="color: yellow; font-size: 8pt;">STACK ( 2 ) 2 2</span><br/>
-<span style="color: darkgoldenrod; font-style: italic; font-size: 8pt;">5: + ;</span><br/>
-<span style="color: yellow; font-size: 8pt;">STACK ( 1 ) 4</span><br/>
-<span style="color: lightgreen">4</span><br/>
-<span style="color: yellow">STACK ( 0 )</span><br/>
-<span style="color: white">ok</span></div>
+![RunForth Debug Output](/docs/debug-out.png)
 
 ## Directives
 
