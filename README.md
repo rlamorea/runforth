@@ -36,14 +36,14 @@ Clicking the `Workspace` selector switches to an empty workspace to try out thin
 
 ### Verbose option
 
-By default, RunForth executes Forth in "Verbose" mode. In this mode it echoes each 
-line of code that is run, shown in $${\color{gold}GOLD}$$
-The output (if any) from the interpreted line shows in <span style="display: inline-block; color:lightgreen; background: black;">LIGHT GREEN</span>.
+By default, RunForth executes Forth in "Verbose" mode. In this mode it echoes each line of code, showing:
 
-Forth prompts are shown in <span style="display: inline-block; color:white; background: black;">white</span>, 
-and errors in <span style="display: inline-block; color: red; font-weight: bold; background:black;">RED</span>.
+- ![GOLD](https://placehold.co/15x15/gold/gold.png) GOLD - the line number and code line being executed
+- ![LIGHTGREEN](https://placehold.co/15x15/lightgreen/lightgreen.png) LIGHT GREEN - the output (if any) of the line executed
+- ![WHITE](https://placehold.co/15x15/white/white.png) WHITE - the Forth prompt following the line execution
+- ![RED](https://placehold.co/15x15/red/red.png) RED - any Forth error for that line
 
-If the `Verbose` option is off, only the <span style="display: inline-block; color:lightgreen; background: black;">OUTPUT</span> is shown.
+If the `Verbose` option is off, only the ![LIGHTGREEN](https://placehold.co/15x15/lightgreen/lightgreen.png) output is shown.
 
 ### Keep Stack option
 
