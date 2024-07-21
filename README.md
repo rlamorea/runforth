@@ -16,8 +16,9 @@ You can [test it out here](https://rlamorea.github.io/runforth/).
 
 ## Caveats
 
-RunForth uses the [ACE]() editor with default highlighting for Forth, which is not _quite_ accurate 
-for the (most of) [ANS Forth]() [CORE words]() and [Extended CORE words]() that the [WAForth]() engine runs to interpret the code.
+RunForth uses the [ACE](https://ace.c9.io/) editor with default highlighting for Forth, which is not _quite_ accurate 
+for the (most of) [ANS Forth](https://forth-standard.org/) [CORE words](https://forth-standard.org/standard/core) and 
+[Extended CORE words](https://forth-standard.org/standard/core) that the [WAForth](https://github.com/remko/waforth) engine runs to interpret the code.
 
 WAForth only implements Forth words in ALL CAPS. To accomodate this, RunForth automatically converts all text outside quotes and parentheses to ALL CAPS before running it.
 This means all variables and words you define should be considered case-insensitive.
